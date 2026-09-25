@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>技術士 答え入力</title>
+<meta name="theme-color" content="#2F5D62">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --ground:#F4F6F3; --surface:#FFFFFF; --ink:#1E2421; --muted:#5E6963; --line:#D3D9D3;
+  --accent:#2F5D62; --accent-ink:#FFFFFF; --accent-soft:#E2ECEC; --flag:#9A6414; --flag-soft:#F6ECDC;
+  --font:"BIZ UDPGothic","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#141816; --surface:#1D2320; --ink:#E4E9E5; --muted:#9AA59F; --line:#333C37;
+    --accent:#86B8BD; --accent-ink:#10201F; --accent-soft:#233334; --flag:#E0B062; --flag-soft:#3A2F1C;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--ground);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;
+  padding:env(safe-area-inset-top,0px) 16px 0}
+.wrap{max-width:440px;margin:0 auto;padding-block:12px 120px;display:flex;flex-direction:column;gap:14px}
+.banner{font-size:12px;color:var(--flag);background:var(--flag-soft);border-radius:6px;padding:6px 10px}
+header{display:flex;flex-direction:column;gap:2px}
+header .date{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+header h1{font-size:20px;margin:0}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.row{display:grid;grid-template-columns:3.2em 1fr;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.qn{font-weight:700}
+.opts{display:flex;gap:6px;flex-wrap:wrap}
+.opt{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:17px;cursor:pointer;display:grid;place-items:center;padding:0}
+.opt[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.extra{grid-column:2;display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:transparent;color:var(--muted);font:inherit;font-size:12.5px;padding:3px 10px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{color:var(--ink);background:var(--accent-soft);border-color:var(--accent)}
+.chip.flag[aria-pressed="true"]{color:var(--flag);background:var(--flag-soft);border-color:var(--flag)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px 18px;display:flex;flex-direction:column;gap:8px}
+.card h2{margin:0;font-size:18px}
+.card p{margin:0;color:var(--muted);font-size:14px}
+.ghost{border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;padding:9px 14px;border-radius:10px;cursor:pointer}
+.primary{border:0;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:700;padding:12px 22px;border-radius:10px;cursor:pointer}
+.primary:disabled{opacity:.45;cursor:default}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
+.bar .in{max-width:440px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.bar .count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex:1}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px}
+details summary{cursor:pointer;font-weight:700}
+.days{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column}
+.days button{width:100%;text-align:left;border:0;border-top:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;padding:8px 2px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.days li:first-child button{border-top:0}
+.days .st{color:var(--muted);font-size:13px;white-space:nowrap}
+.days button[aria-current="true"]{font-weight:700}
+.foot{font-size:12px;color:var(--muted);text-align:center;display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.foot button{border:0;background:none;color:var(--muted);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+.gate{position:fixed;inset:0;background:var(--ground);display:grid;place-items:center;padding:16px;z-index:10}
+.gate .card{max-width:360px;width:100%;align-items:center;text-align:center}
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:.92}
+[hidden]{display:none!important}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate" hidden>
+  <div class="card">
+    <h2>技術士 答え入力</h2>
+    <p>Google アカウントでログインすると、その日の紙の答えを入れられます。</p>
+    <button class="primary" id="loginBtn">ログイン</button>
+    <p id="authMsg"></p>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="banner" id="demoBanner" hidden>見本モードです。押した内容はどこにも保存されません。</div>
+
+  <section id="empty" hidden>
+    <div class="card">
+      <h2>まだ紙が届いていません</h2>
+      <p>技術士の日の前の晩（21:00）に、HANDY が紙といっしょにここへ届けます。</p>
+    </div>
+  </section>
+
+  <section id="main" hidden>
+    <header>
+      <span class="date" id="hDate"></span>
+      <h1 id="hTitle"></h1>
+    </header>
+
+    <div id="entry">
+      <p class="hint">紙の「問1〜」の順に、選んだ番号を押す。</p>
+      <div class="list" id="list" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card" id="done" hidden>
+      <h2>受け取りました</h2>
+      <p id="doneMsg"></p>
+      <div><button class="ghost" id="redoBtn">入れ直す</button></div>
+    </div>
+  </section>
+
+  <details id="daysBox" hidden>
+    <summary>ほかの日</summary>
+    <ul class="days" id="days"></ul>
+  </details>
+
+  <div class="foot"><span id="acct"></span><button id="logoutBtn" hidden>ログアウト</button></div>
+</div>
+
+<div class="bar" id="bar" hidden>
+  <div class="in">
+    <span class="count" id="count"></span>
+    <button class="primary" id="sendBtn" disabled>送る</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+/* 技術士一次の出題器・スマホの答え入力（設計の正本＝Vault 20_Projects/技術士試験/技術士試験対策.md「学習ツールの設計」）。
+   方針：○×・点数・正答はこの画面のどこにも出さない。送ったあとは「受け取りました」だけ。
+   データ（Firestore・プロジェクト gijutsushi-pwa）：
+     users/{uid}/gj/{YYYY-MM-DD}    HANDY（gijutsushi/src/gj_sync.py）が date・label・n を置く。
+                                   この画面が answers・unknown・flag（すべて紙の問1〜の順）と submittedAt を足す。
+     users/{uid}/gjkey/{日付}       正答（HANDY が置く）。この画面は読まない。判定はスクリプトが行う。
+     users/{uid}/meta/gj            ログインの印。HANDY が uid を見つけるために使う。
+   問題文・画像・正答はこのリポジトリ（公開）に入れない。 */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, setDoc, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+/* Firebase設定（公開して安全な値＝秘密鍵ではない）。REPLACE_ME のままなら見本モードで動く */
+const firebaseConfig = {
+  apiKey: "REPLACE_ME",
+  authDomain: "REPLACE_ME",
+  projectId: "REPLACE_ME",
+  storageBucket: "REPLACE_ME",
+  messagingSenderId: "REPLACE_ME",
+  appId: "REPLACE_ME"
+};
+
+const CIRC = ["①","②","③","④","⑤"];
+const $ = id => document.getElementById(id);
+const DEMO = firebaseConfig.apiKey === "REPLACE_ME" || new URLSearchParams(location.search).has("demo");
+
+let db = null, auth = null, uid = null, unsub = null;
+let sets = {};            // { 日付: ドキュメント }
+let cur = null;           // 表示中の日付
+let editing = false;      // 受け取り済みの日を入れ直しているか
+let ans = [], unk = [], flg = [];
+
+/* ---------- 日付 ---------- */
+const pad = n => String(n).padStart(2, "0");
+const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function logicalToday(){ const d = new Date(); if (d.getHours() < 5) d.setDate(d.getDate() - 1); return fmt(d); }
+function parse(s){ const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+const dow = s => "日月火水木金土"[parse(s).getDay()];
+const dateLabel = s => `${s}（${dow(s)}）`;
+const shortLabel = s => `${Number(s.slice(5, 7))}/${Number(s.slice(8, 10))}（${dow(s)}）`;
+
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 1800); }
+function el(tag, attrs = {}, text){ const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text != null) e.textContent = text; return e; }
+
+/* ---------- 下書き（送る前に閉じても消えないように。この端末だけ） ---------- */
+function saveDraft(){ try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg })); } catch (e) {} }
+function loadDraft(date, n){
+  try {
+    const d = JSON.parse(localStorage.getItem("gj-draft-" + date) || "null");
+    if (d && d.ans && d.ans.length === n) return d;
+  } catch (e) {}
+  return null;
+}
+function dropDraft(date){ try { localStorage.removeItem("gj-draft-" + date); } catch (e) {} }
+
+/* ---------- 表示 ---------- */
+function isSent(s){ return !!(s && s.submittedAt); }
+
+function pickDefault(){
+  const today = logicalToday();
+  const dates = Object.keys(sets).sort().reverse();
+  // 今日以前で未送信のもの（新しい順）→ なければ今日以前で最新 → それもなければ最新
+  return dates.find(d => d <= today && !isSent(sets[d])) || dates.find(d => d <= today) || dates[0] || null;
+}
+
+function openSet(date){
+  cur = date; editing = false;
+  const s = sets[date], n = s.n;
+  const draft = loadDraft(date, n);
+  if (draft) { ans = draft.ans; unk = draft.unk; flg = draft.flg; }
+  else if (isSent(s)) { ans = (s.answers || []).slice(); unk = (s.unknown || []).slice(); flg = (s.flag || []).slice(); }
+  else { ans = Array(n).fill(null); unk = Array(n).fill(false); flg = Array(n).fill(false); }
+  while (ans.length < n) ans.push(null);
+  while (unk.length < n) unk.push(false);
+  while (flg.length < n) flg.push(false);
+  render();
+}
+
+function renderList(){
+  const list = $("list"), n = sets[cur].n;
+  list.replaceChildren();
+  for (let i = 0; i < n; i++) {
+    const row = el("div", { class: "row" });
+    const opts = el("div", { class: "opts" });
+    CIRC.forEach((c, j) => {
+      const b = el("button", { class: "opt", "aria-pressed": String(ans[i] === j + 1), "aria-label": `問${i + 1} の答え ${j + 1}` }, c);
+      b.onclick = () => { ans[i] = ans[i] === j + 1 ? null : j + 1; if (ans[i]) unk[i] = false; saveDraft(); render(); };
+      opts.append(b);
+    });
+    const extra = el("div", { class: "extra" });
+    const u = el("button", { class: "chip", "aria-pressed": String(unk[i]) }, "わからない");
+    u.onclick = () => { unk[i] = !unk[i]; if (unk[i]) ans[i] = null; saveDraft(); render(); };
+    const f = el("button", { class: "chip flag", "aria-pressed": String(flg[i]) }, "変かも");
+    f.onclick = () => { flg[i] = !flg[i]; saveDraft(); render(); };
+    extra.append(u, f);
+    row.append(el("span", { class: "qn" }, `問${i + 1}`), opts, extra);
+    list.append(row);
+  }
+}
+
+function renderDays(){
+  const box = $("days"), dates = Object.keys(sets).sort().reverse().slice(0, 14);
+  box.replaceChildren();
+  for (const d of dates) {
+    const s = sets[d];
+    const b = el("button", { "aria-current": String(d === cur) });
+    b.append(el("span", {}, `${shortLabel(d)} ${s.label || ""}`), el("span", { class: "st" }, isSent(s) ? "受け取り済み" : "未入力"));
+    b.onclick = () => { $("daysBox").open = false; openSet(d); window.scrollTo(0, 0); };
+    const li = el("li"); li.append(b); box.append(li);
+  }
+  $("daysBox").hidden = dates.length < 2;
+}
+
+function render(){
+  const has = cur && sets[cur];
+  $("empty").hidden = !!has;
+  $("main").hidden = !has;
+  if (!has) { $("bar").hidden = true; $("daysBox").hidden = true; return; }
+  const s = sets[cur], n = s.n;
+  $("hDate").textContent = dateLabel(cur);
+  $("hTitle").textContent = `${s.label || ""}　${n}問`;
+  const showDone = isSent(s) && !editing;
+  $("done").hidden = !showDone;
+  $("entry").hidden = showDone;
+  $("bar").hidden = showDone;
+  if (showDone) {
+    $("doneMsg").innerHTML = `${n}問ぶんの答えを記録しました。<br>このあとの20分は復習セッションです。`;
+  } else {
+    renderList();
+    const k = ans.filter(Boolean).length + unk.filter(Boolean).length;
+    $("count").textContent = `${k} / ${n} 入力`;
+    $("sendBtn").disabled = k === 0;
+  }
+  renderDays();
+}
+
+/* ---------- 送る ---------- */
+async function send(){
+  const s = sets[cur], n = s.n;
+  const blank = ans.filter((a, i) => !a && !unk[i]).length;
+  if (blank && !confirm(`入っていない問が ${blank} 問あります。このまま送りますか？（「わからない」と同じ扱いになります）`)) return;
+  const now = new Date().toISOString();
+  const patch = { answers: ans.slice(0, n), unknown: unk.slice(0, n), flag: flg.slice(0, n), submittedAt: now, updatedAt: now };
+  if (!DEMO) {
+    if (!uid) { toast("ログインしてください"); return; }
+    try {
+      await setDoc(doc(db, "users", uid, "gj", cur), patch, { merge: true });
+    } catch (e) {
+      // オフラインでもローカルに入り、復帰後に送られる（persistentLocalCache）。明確な拒否だけ知らせる
+      if (e && e.code === "permission-denied") { toast("保存できませんでした（権限）"); return; }
+    }
+  }
+  sets[cur] = { ...s, ...patch };
+  dropDraft(cur);
+  editing = false;
+  render();
+}
+
+/* ---------- データ ---------- */
+function startSync(){
+  const q = query(collection(db, "users", uid, "gj"), orderBy("date", "desc"), limit(30));
+  unsub = onSnapshot(q, snap => {
+    const next = {};
+    snap.forEach(d => { const v = d.data(); if (v && v.date && v.n) next[v.date] = v; });
+    sets = next;
+    if (!cur || !sets[cur]) { const d = pickDefault(); if (d) openSet(d); else { cur = null; render(); } }
+    else if (!editing) { const keep = cur; openSet(keep); }
+    else render();
+  }, () => toast("読み込みに失敗しました"));
+  setDoc(doc(db, "users", uid, "meta", "gj"), { app: "gijutsushi-pwa", lastSignIn: new Date().toISOString() }, { merge: true }).catch(() => {});
+}
+function stopSync(){ if (unsub) { unsub(); unsub = null; } }
+
+function startDemo(){
+  $("demoBanner").hidden = false;
+  const t = logicalToday(), y = fmt(new Date(parse(t).getTime() - 86400000));
+  sets = {
+    [t]: { date: t, label: "専門・材料", n: 6 },
+    [y]: { date: y, label: "適性", n: 6, answers: [2, null, 4, 1, 3, 5], unknown: [false, true, false, false, false, false], flag: Array(6).fill(false), submittedAt: "demo" }
+  };
+  openSet(pickDefault());
+}
+
+/* ---------- 起動 ---------- */
+$("sendBtn").onclick = send;
+$("redoBtn").onclick = () => { editing = true; render(); };
+
+if (DEMO) {
+  startDemo();
+} else {
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  const provider = new GoogleAuthProvider();
+  $("loginBtn").onclick = async () => {
+    $("authMsg").textContent = "";
+    try { await signInWithPopup(auth, provider); }
+    catch (e) {
+      const code = (e && e.code) || "";
+      if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment" || code === "auth/cancelled-popup-request") {
+        try { await signInWithRedirect(auth, provider); } catch (e2) { $("authMsg").textContent = "ログイン失敗: " + (e2.code || e2.message); }
+      } else if (code !== "auth/popup-closed-by-user") { $("authMsg").textContent = "ログイン失敗: " + (code || e.message); }
+    }
+  };
+  $("logoutBtn").onclick = () => signOut(auth);
+  getRedirectResult(auth).catch(() => {});
+  onAuthStateChanged(auth, user => {
+    if (user) { uid = user.uid; $("acct").textContent = user.email || "ログイン中"; $("logoutBtn").hidden = false; $("gate").hidden = true; startSync(); }
+    else { uid = null; stopSync(); sets = {}; cur = null; render(); $("acct").textContent = ""; $("logoutBtn").hidden = true; $("gate").hidden = false; }
+  });
+}
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>

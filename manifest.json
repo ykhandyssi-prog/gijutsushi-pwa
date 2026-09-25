@@ -1,0 +1,17 @@
+{
+  "name": "技術士 答え入力",
+  "short_name": "技術士",
+  "description": "技術士一次の出題器：その日の紙の答えを入れる",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "/gijutsushi-pwa/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6F3",
+  "theme_color": "#2F5D62",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
