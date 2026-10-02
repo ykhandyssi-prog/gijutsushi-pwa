@@ -128,7 +128,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
    方針：○×・点数・正答はこの画面のどこにも出さない。送ったあとは「受け取りました」だけ。
    データ（Firestore・プロジェクト gijutsushi-pwa）：
      users/{uid}/gj/{YYYY-MM-DD}    HANDY（gijutsushi/src/gj_sync.py）が date・label・n を置く。
-                                   この画面が answers・unknown・flag（すべて紙の問1〜の順）と submittedAt を足す。
+                                   この画面が answers・unknown・flag・hint（すべて紙の問1〜の順）と submittedAt を足す。
      users/{uid}/gjkey/{日付}       正答（HANDY が置く）。この画面は読まない。判定はスクリプトが行う。
      users/{uid}/meta/gj            ログインの印。HANDY が uid を見つけるために使う。
    問題文・画像・正答はこのリポジトリ（公開）に入れない。 */
@@ -155,7 +155,7 @@ let sets = {};            // { 日付: ドキュメント }
 let cur = null;           // 表示中の日付
 let editing = false;      // 受け取り済みの日を入れ直しているか
 let pinned = null;        // 本人が選んだ／入力を始めた日の論理日。その日のうちは勝手に切り替えない
-let ans = [], unk = [], flg = [];
+let ans = [], unk = [], flg = [], hnt = [];
 
 /* ---------- 日付 ---------- */
 const pad = n => String(n).padStart(2, "0");
@@ -170,7 +170,7 @@ function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add(
 function el(tag, attrs = {}, text){ const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text != null) e.textContent = text; return e; }
 
 /* ---------- 下書き（送る前に閉じても消えないように。この端末だけ） ---------- */
-function saveDraft(){ pinned = logicalToday(); try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg })); } catch (e) {} }
+function saveDraft(){ pinned = logicalToday(); try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg, hnt })); } catch (e) {} }
 function loadDraft(date, n){
   try {
     const d = JSON.parse(localStorage.getItem("gj-draft-" + date) || "null");
@@ -205,12 +205,13 @@ function openSet(date){
   cur = date; editing = false;
   const s = sets[date], n = s.n;
   const draft = loadDraft(date, n);
-  if (draft) { ans = draft.ans; unk = draft.unk; flg = draft.flg; }
-  else if (isSent(s)) { ans = (s.answers || []).slice(); unk = (s.unknown || []).slice(); flg = (s.flag || []).slice(); }
-  else { ans = Array(n).fill(null); unk = Array(n).fill(false); flg = Array(n).fill(false); }
+  if (draft) { ans = draft.ans; unk = draft.unk; flg = draft.flg; hnt = draft.hnt || []; }
+  else if (isSent(s)) { ans = (s.answers || []).slice(); unk = (s.unknown || []).slice(); flg = (s.flag || []).slice(); hnt = (s.hint || []).slice(); }
+  else { ans = Array(n).fill(null); unk = Array(n).fill(false); flg = Array(n).fill(false); hnt = Array(n).fill(false); }
   while (ans.length < n) ans.push(null);
   while (unk.length < n) unk.push(false);
   while (flg.length < n) flg.push(false);
+  while (hnt.length < n) hnt.push(false);
   render();
 }
 
@@ -227,10 +228,13 @@ function renderList(){
     });
     const extra = el("div", { class: "extra" });
     const u = el("button", { class: "chip", "aria-pressed": String(unk[i]) }, "わからない");
-    u.onclick = () => { unk[i] = !unk[i]; if (unk[i]) ans[i] = null; saveDraft(); render(); };
+    u.onclick = () => { unk[i] = !unk[i]; if (unk[i]) { ans[i] = null; hnt[i] = false; } saveDraft(); render(); };
+    // 紙の裏のヒントを見て解けた印。番号は別に押す。出題側が「まだ1人では解けていない」として類題で戻す
+    const h = el("button", { class: "chip", "aria-pressed": String(hnt[i]) }, "ヒントで解けた");
+    h.onclick = () => { hnt[i] = !hnt[i]; if (hnt[i]) unk[i] = false; saveDraft(); render(); };
     const f = el("button", { class: "chip flag", "aria-pressed": String(flg[i]) }, "変かも");
     f.onclick = () => { flg[i] = !flg[i]; saveDraft(); render(); };
-    extra.append(u, f);
+    extra.append(u, h, f);
     row.append(el("span", { class: "qn" }, `問${i + 1}`), opts, extra);
     list.append(row);
   }
@@ -278,7 +282,7 @@ async function send(){
   const blank = ans.filter((a, i) => !a && !unk[i]).length;
   if (blank && !confirm(`入っていない問が ${blank} 問あります。このまま送りますか？（「わからない」と同じ扱いになります）`)) return;
   const now = new Date().toISOString();
-  const patch = { answers: ans.slice(0, n), unknown: unk.slice(0, n), flag: flg.slice(0, n), submittedAt: now, updatedAt: now };
+  const patch = { answers: ans.slice(0, n), unknown: unk.slice(0, n), flag: flg.slice(0, n), hint: hnt.slice(0, n), submittedAt: now, updatedAt: now };
   if (!DEMO) {
     if (!uid) { toast("ログインしてください"); return; }
     try {

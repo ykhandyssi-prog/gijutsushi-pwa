@@ -8,7 +8,7 @@ PC 側（出題・紙の生成・判定）は HANDY の `C:\Users\ykhan\gijutsus
 - **このリポジトリは公開**。問題文・画像・正答は入れない（画面のコードと Firebase の公開設定だけ）。
 
 ## データ（Firestore・プロジェクト `gijutsushi-pwa`）
-- `users/{uid}/gj/{YYYY-MM-DD}` … HANDY（`gijutsushi/src/gj_sync.py push`）が `date`・`subject`・`field`・`label`・`n` を置く。この画面が `answers`・`unknown`・`flag`（すべて紙の問1〜の順）と `submittedAt` を足す。
+- `users/{uid}/gj/{YYYY-MM-DD}` … HANDY（`gijutsushi/src/gj_sync.py push`）が `date`・`subject`・`field`・`label`・`n` を置く。この画面が `answers`・`unknown`・`flag`・`hint`（すべて紙の問1〜の順。`hint`＝紙の裏のヒントで解けた印）と `submittedAt` を足す。
 - `users/{uid}/gjkey/{YYYY-MM-DD}` … 正答（紙の順）。HANDY が置き、この画面は読まない。判定はスクリプトが行う（復習セッション `/gj-review` が YUZAN から読む）。
 - `users/{uid}/meta/gj` … ログインの印。HANDY が uid を見つけるのに使う。
 
