@@ -154,6 +154,7 @@ let db = null, auth = null, uid = null, unsub = null;
 let sets = {};            // { 日付: ドキュメント }
 let cur = null;           // 表示中の日付
 let editing = false;      // 受け取り済みの日を入れ直しているか
+let pinned = null;        // 本人が選んだ／入力を始めた日の論理日。その日のうちは勝手に切り替えない
 let ans = [], unk = [], flg = [];
 
 /* ---------- 日付 ---------- */
@@ -169,7 +170,7 @@ function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add(
 function el(tag, attrs = {}, text){ const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text != null) e.textContent = text; return e; }
 
 /* ---------- 下書き（送る前に閉じても消えないように。この端末だけ） ---------- */
-function saveDraft(){ try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg })); } catch (e) {} }
+function saveDraft(){ pinned = logicalToday(); try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg })); } catch (e) {} }
 function loadDraft(date, n){
   try {
     const d = JSON.parse(localStorage.getItem("gj-draft-" + date) || "null");
@@ -184,9 +185,20 @@ function isSent(s){ return !!(s && s.submittedAt); }
 
 function pickDefault(){
   const today = logicalToday();
+  if (sets[today]) return today;
   const dates = Object.keys(sets).sort().reverse();
-  // 今日以前で未送信のもの（新しい順）→ なければ今日以前で最新 → それもなければ最新
+  // 今日の紙が無い日は：今日以前で未送信のもの（新しい順）→ なければ今日以前で最新 → それもなければ最新
   return dates.find(d => d <= today && !isSent(sets[d])) || dates.find(d => d <= today) || dates[0] || null;
+}
+
+/* 一覧が変わるたび（端末のキャッシュ→サーバーの順に2回来る）と、画面に戻ってきたときに呼ぶ。
+   キャッシュの時点では今日の分がまだ無いことがあるので、本人が選んでいない限り毎回選び直す */
+function applySets(next){
+  sets = next;
+  if (pinned !== logicalToday()) pinned = null;
+  if (editing && cur && sets[cur]) { render(); return; }
+  const d = pinned && cur && sets[cur] ? cur : pickDefault();
+  if (d) openSet(d); else { cur = null; render(); }
 }
 
 function openSet(date){
@@ -231,7 +243,7 @@ function renderDays(){
     const s = sets[d];
     const b = el("button", { "aria-current": String(d === cur) });
     b.append(el("span", {}, `${shortLabel(d)} ${s.label || ""}`), el("span", { class: "st" }, isSent(s) ? "受け取り済み" : "未入力"));
-    b.onclick = () => { $("daysBox").open = false; openSet(d); window.scrollTo(0, 0); };
+    b.onclick = () => { $("daysBox").open = false; pinned = logicalToday(); openSet(d); window.scrollTo(0, 0); };
     const li = el("li"); li.append(b); box.append(li);
   }
   $("daysBox").hidden = dates.length < 2;
@@ -288,10 +300,7 @@ function startSync(){
   unsub = onSnapshot(q, snap => {
     const next = {};
     snap.forEach(d => { const v = d.data(); if (v && v.date && v.n) next[v.date] = v; });
-    sets = next;
-    if (!cur || !sets[cur]) { const d = pickDefault(); if (d) openSet(d); else { cur = null; render(); } }
-    else if (!editing) { const keep = cur; openSet(keep); }
-    else render();
+    applySets(next);
   }, () => toast("読み込みに失敗しました"));
   setDoc(doc(db, "users", uid, "meta", "gj"), { app: "gijutsushi-pwa", lastSignIn: new Date().toISOString() }, { merge: true }).catch(() => {});
 }
@@ -300,16 +309,19 @@ function stopSync(){ if (unsub) { unsub(); unsub = null; } }
 function startDemo(){
   $("demoBanner").hidden = false;
   const t = logicalToday(), y = fmt(new Date(parse(t).getTime() - 86400000));
-  sets = {
-    [t]: { date: t, label: "専門・材料", n: 6 },
+  const past = {
     [y]: { date: y, label: "適性", n: 6, answers: [2, null, 4, 1, 3, 5], unknown: [false, true, false, false, false, false], flag: Array(6).fill(false), submittedAt: "demo" }
   };
-  openSet(pickDefault());
+  // 本番と同じ順：まず端末のキャッシュ（今日の分がまだ無い）、少し遅れてサーバーから今日の分が届く
+  applySets(past);
+  setTimeout(() => applySets({ ...past, [t]: { date: t, label: "専門・材料", n: 6 } }), 600);
 }
 
 /* ---------- 起動 ---------- */
 $("sendBtn").onclick = send;
 $("redoBtn").onclick = () => { editing = true; render(); };
+// 開きっぱなしのアプリに翌日戻ってきたときも、今日の分に切り替える
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Object.keys(sets).length) applySets(sets); });
 
 if (DEMO) {
   startDemo();
