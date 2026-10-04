@@ -31,6 +31,9 @@ header{display:flex;flex-direction:column;gap:2px}
 header .date{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 header h1{font-size:20px;margin:0}
 .hint{font-size:13px;color:var(--muted);margin:0}
+.times{display:flex;gap:12px;align-items:center;margin-top:8px;font-size:14px;color:var(--muted)}
+.times label{display:flex;gap:6px;align-items:center}
+.times input{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px}
 .row{display:grid;grid-template-columns:3.2em 1fr;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
 .row:first-child{border-top:0}
@@ -97,6 +100,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
     <div id="entry">
       <p class="hint">紙の「問1〜」の順に、選んだ番号を押す。</p>
+      <div class="times"><label>開始<input type="time" id="tStart"></label><label>終了<input type="time" id="tEnd"></label></div>
+      <p class="hint" style="margin-top:4px">紙に書いた時刻を入れる。終了は空のままなら送った時刻になる。</p>
       <div class="list" id="list" style="margin-top:8px"></div>
     </div>
 
@@ -156,6 +161,7 @@ let cur = null;           // 表示中の日付
 let editing = false;      // 受け取り済みの日を入れ直しているか
 let pinned = null;        // 本人が選んだ／入力を始めた日の論理日。その日のうちは勝手に切り替えない
 let ans = [], unk = [], flg = [], hnt = [];
+let tStart = "", tEnd = "";   // 開始・終了（HH:MM・紙の枠と同じ・2026-10-04）
 
 /* ---------- 日付 ---------- */
 const pad = n => String(n).padStart(2, "0");
@@ -170,7 +176,7 @@ function toast(msg){ const t = $("toast"); t.textContent = msg; t.classList.add(
 function el(tag, attrs = {}, text){ const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text != null) e.textContent = text; return e; }
 
 /* ---------- 下書き（送る前に閉じても消えないように。この端末だけ） ---------- */
-function saveDraft(){ pinned = logicalToday(); try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg, hnt })); } catch (e) {} }
+function saveDraft(){ pinned = logicalToday(); try { localStorage.setItem("gj-draft-" + cur, JSON.stringify({ ans, unk, flg, hnt, tStart, tEnd })); } catch (e) {} }
 function loadDraft(date, n){
   try {
     const d = JSON.parse(localStorage.getItem("gj-draft-" + date) || "null");
@@ -205,9 +211,9 @@ function openSet(date){
   cur = date; editing = false;
   const s = sets[date], n = s.n;
   const draft = loadDraft(date, n);
-  if (draft) { ans = draft.ans; unk = draft.unk; flg = draft.flg; hnt = draft.hnt || []; }
-  else if (isSent(s)) { ans = (s.answers || []).slice(); unk = (s.unknown || []).slice(); flg = (s.flag || []).slice(); hnt = (s.hint || []).slice(); }
-  else { ans = Array(n).fill(null); unk = Array(n).fill(false); flg = Array(n).fill(false); hnt = Array(n).fill(false); }
+  if (draft) { ans = draft.ans; unk = draft.unk; flg = draft.flg; hnt = draft.hnt || []; tStart = draft.tStart || ""; tEnd = draft.tEnd || ""; }
+  else if (isSent(s)) { ans = (s.answers || []).slice(); unk = (s.unknown || []).slice(); flg = (s.flag || []).slice(); hnt = (s.hint || []).slice(); tStart = s.startTime || ""; tEnd = s.endTime || ""; }
+  else { ans = Array(n).fill(null); unk = Array(n).fill(false); flg = Array(n).fill(false); hnt = Array(n).fill(false); tStart = ""; tEnd = ""; }
   while (ans.length < n) ans.push(null);
   while (unk.length < n) unk.push(false);
   while (flg.length < n) flg.push(false);
@@ -269,6 +275,7 @@ function render(){
     $("doneMsg").innerHTML = `${n}問ぶんの答えを記録しました。<br>このあとの20分は復習セッションです。`;
   } else {
     renderList();
+    $("tStart").value = tStart; $("tEnd").value = tEnd;
     const k = ans.filter(Boolean).length + unk.filter(Boolean).length;
     $("count").textContent = `${k} / ${n} 入力`;
     $("sendBtn").disabled = k === 0;
@@ -281,8 +288,9 @@ async function send(){
   const s = sets[cur], n = s.n;
   const blank = ans.filter((a, i) => !a && !unk[i]).length;
   if (blank && !confirm(`入っていない問が ${blank} 問あります。このまま送りますか？（「わからない」と同じ扱いになります）`)) return;
-  const now = new Date().toISOString();
-  const patch = { answers: ans.slice(0, n), unknown: unk.slice(0, n), flag: flg.slice(0, n), hint: hnt.slice(0, n), submittedAt: now, updatedAt: now };
+  const nowD = new Date(), now = nowD.toISOString();
+  const endT = tEnd || `${pad(nowD.getHours())}:${pad(nowD.getMinutes())}`;   // 終了が空なら送った時刻
+  const patch = { answers: ans.slice(0, n), unknown: unk.slice(0, n), flag: flg.slice(0, n), hint: hnt.slice(0, n), startTime: tStart || null, endTime: endT, submittedAt: now, updatedAt: now };
   if (!DEMO) {
     if (!uid) { toast("ログインしてください"); return; }
     try {
@@ -323,6 +331,8 @@ function startDemo(){
 
 /* ---------- 起動 ---------- */
 $("sendBtn").onclick = send;
+$("tStart").onchange = e => { tStart = e.target.value; saveDraft(); };
+$("tEnd").onchange = e => { tEnd = e.target.value; saveDraft(); };
 $("redoBtn").onclick = () => { editing = true; render(); };
 // 開きっぱなしのアプリに翌日戻ってきたときも、今日の分に切り替える
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Object.keys(sets).length) applySets(sets); });
