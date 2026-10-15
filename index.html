@@ -67,6 +67,18 @@ details summary{cursor:pointer;font-weight:700}
 .gate .card{max-width:360px;width:100%;align-items:center;text-align:center}
 .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s}
 .toast.show{opacity:.92}
+.drill{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.drill .dhead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.drill h2{margin:0;font-size:16px}
+.drill .round{display:flex;flex-direction:column;border-top:1px solid var(--line);padding-top:6px}
+.drill .round.locked{opacity:.7}
+.drill .rtitle{font-size:13px;color:var(--muted);margin:2px 0}
+.drow{display:grid;grid-template-columns:2.4em minmax(0,1fr) 1.6em;align-items:center;gap:8px;padding:6px 0}
+.drow .mark{font-weight:700;font-size:18px;text-align:center}
+.drow.x .mark{color:var(--flag)}
+.txt{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;min-width:0}
+.drill .dfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.drill .msg{font-size:13px;color:var(--flag);margin:0}
 [hidden]{display:none!important}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
@@ -97,6 +109,12 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <span class="date" id="hDate"></span>
       <h1 id="hTitle"></h1>
     </header>
+
+    <section class="drill" id="drillBox" hidden>
+      <div class="dhead"><h2 id="drillTitle">式ドリル</h2><button class="chip" id="drillHide" hidden>○×を出さない</button></div>
+      <p class="hint" id="drillHint"></p>
+      <div id="drillRounds"></div>
+    </section>
 
     <div id="entry">
       <p class="hint">紙の「問1〜」の順に、選んだ番号を押す。</p>
@@ -187,6 +205,114 @@ function loadDraft(date, n){
 }
 function dropDraft(date){ try { localStorage.removeItem("gj-draft-" + date); } catch (e) {} }
 
+/* ---------- 式ドリル（2026-10-16〜・設計＝Vault 技術士試験対策 notes 2026-10-13） ----------
+   紙の一番上の「D1〜」。HANDY が gj に drill＝{mode, minutes, n, qs:[{t, n, a?}]} を置く。
+   instant＝送るとその場で ○×、× の項目だけ紙で直して全部 ○ まで送り直す（eigo-pwa の採点と同じ形）。
+   hidden（または端末の「○×を出さない」）＝1回送るだけで ○× は出さない。本題の問は今までどおり ○× を出さない。
+   送った記録＝drillRounds（[{qs:[D の添字], sel, ok}]）・drillDoneAt。1回目の ○× は HANDY が項目の答えと照らして決める。
+   打ちかけは端末の下書きだけに置き、採点（送信）したときだけ保存する（打ちかけを1回目として読ませない）。
+   判定は eigo-pwa の judge()／normShort() を写した（全角半角を NFKC で揃えるのだけ足した＝HANDY の drill.py と同じ） */
+const normShort = v => { let x = String(v || "").normalize("NFKC").trim().toLowerCase().split(/\s+/).join(" "); if (x.endsWith(".")) x = x.slice(0, -1).trimEnd(); return x; };
+function judge(q, v){
+  if (q.t === "short") return (q.a || []).some(a => normShort(a) === normShort(v));
+  return v === q.a;
+}
+const filled = v => v !== null && v !== undefined && String(v).trim() !== "";
+let dst = null;           // 表示中の日のドリルの記録 { rounds, doneAt }
+const hideKey = "gj-drill-hide";
+function hideMarks(){ try { return localStorage.getItem(hideKey) === "1"; } catch (e) { return false; } }
+function drillOf(s){ return s && s.drill && s.drill.n ? s.drill : null; }
+const quiet = d => d.mode !== "instant" || hideMarks();          // ○× を出さない見せ方
+function freshRound(qs){ return { qs, sel: qs.map(() => null), ok: qs.map(() => null) }; }
+function loadDrill(date, s){
+  const d = drillOf(s);
+  if (!d) return null;
+  try {
+    const x = JSON.parse(localStorage.getItem("gj-drill-" + date) || "null");
+    if (x && Array.isArray(x.rounds) && x.rounds.length) return x;
+  } catch (e) {}
+  if (Array.isArray(s.drillRounds) && s.drillRounds.length)
+    return { rounds: s.drillRounds.map(r => ({ qs: r.qs.slice(), sel: (r.sel || []).slice(), ok: (r.ok || []).slice() })), doneAt: s.drillDoneAt || null };
+  return { rounds: [freshRound([...Array(d.n).keys()])], doneAt: null };
+}
+function draftDrill(){ try { localStorage.setItem("gj-drill-" + cur, JSON.stringify(dst)); } catch (e) {} }
+const graded = r => r.ok.length > 0 && r.ok.every(v => v !== null);
+const lastRound = () => dst.rounds[dst.rounds.length - 1];
+
+async function saveDrill(){
+  const now = new Date().toISOString();
+  const patch = { drillRounds: dst.rounds, drillDoneAt: dst.doneAt, updatedAt: now };
+  sets[cur] = { ...sets[cur], ...patch };
+  try { localStorage.removeItem("gj-drill-" + cur); } catch (e) {}
+  if (DEMO || !uid) return;
+  try { await setDoc(doc(db, "users", uid, "gj", cur), patch, { merge: true }); }
+  catch (e) { if (e && e.code === "permission-denied") toast("保存できませんでした（権限）"); }
+}
+
+function gradeDrill(){
+  const d = drillOf(sets[cur]), r = lastRound();
+  const empty = r.qs.filter((q, i) => !filled(r.sel[i]));
+  if (empty.length) { $("drillMsg").textContent = "まだ答えていない項目があります：" + empty.map(q => "D" + (q + 1)).join("・"); return; }
+  if (quiet(d)) {                       // ○× を出さない：1回送って終わり（判定は HANDY）
+    dst.doneAt = new Date().toISOString();
+  } else {
+    r.ok = r.qs.map((q, i) => judge(d.qs[q], r.sel[i]));
+    const wrong = r.qs.filter((q, i) => r.ok[i] === false);
+    if (wrong.length) dst.rounds.push(freshRound(wrong)); else dst.doneAt = new Date().toISOString();
+  }
+  pinned = logicalToday();
+  saveDrill(); renderDrill();
+}
+
+function renderDrill(){
+  const s = sets[cur], d = drillOf(s);
+  $("drillBox").hidden = !d;
+  if (!d) return;
+  const q0 = quiet(d);
+  $("drillTitle").textContent = `式ドリル（${d.n}項目${d.minutes ? "・" + d.minutes + "分" : ""}）`;
+  $("drillHide").hidden = d.mode !== "instant";
+  $("drillHide").setAttribute("aria-pressed", String(hideMarks()));
+  $("drillHint").textContent = dst.doneAt
+    ? (q0 ? "受け取りました。" : "全部 ○ になりました。")
+    : (q0 ? "紙の D1〜 の答えを入れて送る（○× は出ません）。" : "紙の D1〜 の答えを入れて採点する。× は紙で直して、全部 ○ まで送り直す。");
+  const box = $("drillRounds");
+  box.replaceChildren();
+  dst.rounds.forEach((r, idx) => {
+    const active = idx === dst.rounds.length - 1 && !dst.doneAt && !graded(r);
+    const wrap = el("div", { class: "round" + (active ? "" : " locked") });
+    if (dst.rounds.length > 1 || idx > 0) wrap.append(el("p", { class: "rtitle" }, idx === 0 ? "1回目" : `直し ${idx}回目（${r.qs.length}項目）`));
+    r.qs.forEach((q, i) => {
+      const spec = d.qs[q], row = el("div", { class: "drow" + (!q0 && r.ok[i] === false ? " x" : "") });
+      const field = el("div", { class: "opts" });
+      if (spec.t === "choice") {
+        for (let j = 1; j <= (spec.n || 4); j++) {
+          const b = el("button", { class: "opt", type: "button", "aria-pressed": String(r.sel[i] === j), "aria-label": `D${q + 1} の ${j} 番` }, CIRC[j - 1] || String(j));
+          if (!active) b.disabled = true;
+          else b.onclick = () => { r.sel[i] = r.sel[i] === j ? null : j; pinned = logicalToday(); draftDrill(); renderDrill(); };
+          field.append(b);
+        }
+      } else {
+        const inp = el("input", { class: "txt", type: "text", autocomplete: "off", autocapitalize: "off", placeholder: "答えを打つ", "aria-label": `D${q + 1} の答え` });
+        inp.value = r.sel[i] || "";
+        if (active) inp.addEventListener("input", e => { r.sel[i] = e.currentTarget.value; pinned = logicalToday(); draftDrill(); });
+        else inp.disabled = true;
+        field.append(inp);
+      }
+      const mark = q0 || r.ok[i] === null || r.ok[i] === undefined ? "" : (r.ok[i] ? "○" : "×");
+      row.append(el("span", { class: "qn" }, `D${q + 1}`), field, el("span", { class: "mark" }, mark));
+      wrap.append(row);
+    });
+    if (active) {
+      const f = el("div", { class: "dfoot" });
+      const g = el("button", { class: "primary", type: "button" }, q0 ? "ドリルを送る" : (idx === 0 ? "採点する" : "直しを採点する"));
+      g.onclick = gradeDrill;
+      f.append(g, el("p", { class: "msg", id: "drillMsg" }));
+      wrap.append(f);
+    }
+    box.append(wrap);
+  });
+}
+
 /* ---------- 表示 ---------- */
 function isSent(s){ return !!(s && s.submittedAt); }
 
@@ -219,6 +345,7 @@ function openSet(date){
   while (unk.length < n) unk.push(false);
   while (flg.length < n) flg.push(false);
   while (hnt.length < n) hnt.push(false);
+  dst = loadDrill(date, s);
   render();
 }
 
@@ -270,6 +397,7 @@ function render(){
   const s = sets[cur], n = s.n;
   $("hDate").textContent = dateLabel(cur);
   $("hTitle").textContent = `${s.label || ""}　${n}問`;
+  renderDrill();
   const showDone = isSent(s) && !editing;
   $("done").hidden = !showDone;
   $("entry").hidden = showDone;
@@ -330,7 +458,8 @@ function startDemo(){
   };
   // 本番と同じ順：まず端末のキャッシュ（今日の分がまだ無い）、少し遅れてサーバーから今日の分が届く
   applySets(past);
-  setTimeout(() => applySets({ ...past, [t]: { date: t, label: "専門・材料", n: 7, redo: 3 } }), 600);
+  const drill = { mode: "instant", minutes: 3, n: 3, qs: [{ t: "choice", n: 4, a: 2 }, { t: "short", a: ["等積", "定積"] }, { t: "choice", n: 2, a: 1 }] };
+  setTimeout(() => applySets({ ...past, [t]: { date: t, label: "専門・材料", n: 7, redo: 3, drill } }), 600);
 }
 
 /* ---------- 起動 ---------- */
@@ -339,6 +468,8 @@ $("tStart").onchange = e => { tStart = e.target.value; saveDraft(); };
 $("tEnd").onchange = e => { tEnd = e.target.value; saveDraft(); };
 $("tRedo").onchange = e => { tRedo = e.target.value; saveDraft(); };
 $("redoBtn").onclick = () => { editing = true; render(); };
+// 「○×を出さない」（この端末だけ・押したその場で効く）。instant の日だけ出す
+$("drillHide").onclick = () => { try { localStorage.setItem(hideKey, hideMarks() ? "0" : "1"); } catch (e) {} renderDrill(); };
 // 開きっぱなしのアプリに翌日戻ってきたときも、今日の分に切り替える
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Object.keys(sets).length) applySets(sets); });
 

@@ -5,11 +5,13 @@ PC 側（出題・紙の生成・判定）は HANDY の `C:\Users\ykhan\gijutsus
 
 ## 方針
 - 紙で解き、答えの番号だけをここで入れる。**○×・点数・正答はこの画面のどこにも出さない**。送ったあとは「受け取りました」だけ。
+- 例外は**式ドリル**（紙の一番上の D1〜・2026-10-16〜）だけ：HANDY の設定が instant の日は、送るとその場で ○× を出し、× を紙で直して全部 ○ まで送り直す（eigo-pwa と同じ採点）。hidden の日と、この端末で「○×を出さない」を押したときは1回送るだけ。本題の問は今までどおり。
 - **このリポジトリは公開**。問題文・画像・正答は入れない（画面のコードと Firebase の公開設定だけ）。
 
 ## データ（Firestore・プロジェクト `gijutsushi-pwa`）
 - `users/{uid}/gj/{YYYY-MM-DD}` … HANDY（`gijutsushi/src/gj_sync.py push`）が `date`・`subject`・`field`・`label`・`n` を置く。この画面が `answers`・`unknown`・`flag`・`hint`（すべて紙の問1〜の順。`hint`＝紙の裏のヒントで解けた印）と `submittedAt` を足す。
 - `users/{uid}/gjkey/{YYYY-MM-DD}` … 正答（紙の順）。HANDY が置き、この画面は読まない。判定はスクリプトが行う（復習セッション `/gj-review` が YUZAN から読む）。
+- 式ドリル：HANDY が `gj` に `drill`＝`{mode, minutes, n, qs:[{t, n, a?}]}` を置く（`a`＝答えは instant の日だけ。hidden は `gjkey` の `drill`）。この画面が `drillRounds`（`[{qs, sel, ok}]`）と `drillDoneAt` を、採点（送信）したときだけ足す（打ちかけは端末の下書き）。1回目の ○× は HANDY が項目の答えと照らして決める。
 - `users/{uid}/meta/gj` … ログインの印。HANDY が uid を見つけるのに使う。
 
 HANDY の毎晩 21:00（`nightly.py`）が、答えの取り込み（pull）→ 翌日の出題と紙 → スマホへの送信（push）の順に回す。
