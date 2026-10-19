@@ -76,6 +76,7 @@ details summary{cursor:pointer;font-weight:700}
 .drow{display:grid;grid-template-columns:2.4em minmax(0,1fr) 1.6em;align-items:center;gap:8px;padding:6px 0}
 .drow .mark{font-weight:700;font-size:18px;text-align:center}
 .drow.x .mark{color:var(--flag)}
+.fmt{flex-basis:100%;font-size:12px;color:var(--muted);margin:0}
 .txt{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;min-width:0}
 .drill .dfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .drill .msg{font-size:13px;color:var(--flag);margin:0}
@@ -217,6 +218,21 @@ function judge(q, v){
   if (q.t === "short") return (q.a || []).some(a => normShort(a) === normShort(v));
   return v === q.a;
 }
+/* 短答の答えの形（2026-10-19 本人「語入力だと分からなかった．回答の形式からちゃんと分かるようにして．」）。
+   項目に f（"word"／"num"／"expr"）があればそれを使い、無ければ受け付ける答え a から決める：
+   全部が数値なら数値、かな・漢字を含めば語、それ以外は記号・式。欄の上に常に見える字で出す（placeholder は打つと消えるため） */
+const SHORT_FMT = {
+  word: { label: "語を打つ（漢字・かな）", ph: "語を打つ" },
+  num:  { label: "数値を打つ（半角・全角どちらでも）", ph: "数値を打つ" },
+  expr: { label: "記号・式を打つ（英字・記号）", ph: "記号・式を打つ" },
+};
+function shortKind(spec){
+  if (SHORT_FMT[spec.f]) return spec.f;
+  const as = (spec.a || []).map(a => String(a).normalize("NFKC").trim()).filter(Boolean);
+  if (as.length && as.every(a => /^[-+]?(\d+([.,]\d+)?|\.\d+)(\/\d+)?(e[-+]?\d+)?$/i.test(a))) return "num";
+  if (as.some(a => /[぀-ヿ㐀-鿿]/.test(a))) return "word";
+  return "expr";
+}
 const filled = v => v !== null && v !== undefined && String(v).trim() !== "";
 let dst = null;           // 表示中の日のドリルの記録 { rounds, doneAt }
 const hideKey = "gj-drill-hide";
@@ -292,7 +308,9 @@ function renderDrill(){
           field.append(b);
         }
       } else {
-        const inp = el("input", { class: "txt", type: "text", autocomplete: "off", autocapitalize: "off", placeholder: "答えを打つ", "aria-label": `D${q + 1} の答え` });
+        const fmt = SHORT_FMT[shortKind(spec)];
+        const inp = el("input", { class: "txt", type: "text", autocomplete: "off", autocapitalize: "off", placeholder: fmt.ph, "aria-label": `D${q + 1} の答え（${fmt.label}）` });
+        field.append(el("p", { class: "fmt" }, fmt.label));
         inp.value = r.sel[i] || "";
         if (active) inp.addEventListener("input", e => { r.sel[i] = e.currentTarget.value; pinned = logicalToday(); draftDrill(); });
         else inp.disabled = true;
@@ -458,7 +476,7 @@ function startDemo(){
   };
   // 本番と同じ順：まず端末のキャッシュ（今日の分がまだ無い）、少し遅れてサーバーから今日の分が届く
   applySets(past);
-  const drill = { mode: "instant", minutes: 3, n: 3, qs: [{ t: "choice", n: 4, a: 2 }, { t: "short", a: ["等積", "定積"] }, { t: "choice", n: 2, a: 1 }] };
+  const drill = { mode: "instant", minutes: 3, n: 5, qs: [{ t: "choice", n: 4, a: 2 }, { t: "short", a: ["等積", "定積"] }, { t: "choice", n: 2, a: 1 }, { t: "short", a: ["0.5", "1/2"] }, { t: "short", a: ["k-1"] }] };
   setTimeout(() => applySets({ ...past, [t]: { date: t, label: "専門・材料", n: 7, redo: 3, drill } }), 600);
 }
 
