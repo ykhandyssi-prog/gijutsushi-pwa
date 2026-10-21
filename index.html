@@ -80,6 +80,7 @@ details summary{cursor:pointer;font-weight:700}
 .txt{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%;min-width:0}
 .drill .dfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .drill .msg{font-size:13px;color:var(--flag);margin:0}
+.fmt.reveal{color:var(--ink);font-weight:700}
 [hidden]{display:none!important}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
@@ -234,6 +235,10 @@ function shortKind(spec){
   return "expr";
 }
 const filled = v => v !== null && v !== undefined && String(v).trim() !== "";
+/* 「思い出せない」（2026-10-21 本人決定）：推測で埋めずに押す。その項目は × として送られ（HANDY の判定でも ×＝翌日また出る）、
+   instant の日はその場で答えを出して直しの回には回さない（紙に写して閉じる）。○× を出さない日は送るだけ */
+const GIVEUP = "?思い出せない";
+const answerText = spec => spec.t === "choice" ? (CIRC[spec.a - 1] || String(spec.a)) : (spec.a || [])[0];
 let dst = null;           // 表示中の日のドリルの記録 { rounds, doneAt }
 const hideKey = "gj-drill-hide";
 function hideMarks(){ try { return localStorage.getItem(hideKey) === "1"; } catch (e) { return false; } }
@@ -272,8 +277,8 @@ function gradeDrill(){
   if (quiet(d)) {                       // ○× を出さない：1回送って終わり（判定は HANDY）
     dst.doneAt = new Date().toISOString();
   } else {
-    r.ok = r.qs.map((q, i) => judge(d.qs[q], r.sel[i]));
-    const wrong = r.qs.filter((q, i) => r.ok[i] === false);
+    r.ok = r.qs.map((q, i) => r.sel[i] !== GIVEUP && judge(d.qs[q], r.sel[i]));
+    const wrong = r.qs.filter((q, i) => r.ok[i] === false && r.sel[i] !== GIVEUP);   // 思い出せない項目は答えを見て閉じる
     if (wrong.length) dst.rounds.push(freshRound(wrong)); else dst.doneAt = new Date().toISOString();
   }
   pinned = logicalToday();
@@ -290,7 +295,8 @@ function renderDrill(){
   $("drillHide").setAttribute("aria-pressed", String(hideMarks()));
   $("drillHint").textContent = dst.doneAt
     ? (q0 ? "受け取りました。" : "全部 ○ になりました。")
-    : (q0 ? "紙の D1〜 の答えを入れて送る（○× は出ません）。" : "紙の D1〜 の答えを入れて採点する。× は紙で直して、全部 ○ まで送り直す。");
+    : (q0 ? "紙の D1〜 の答えを入れて送る（○× は出ません）。思い出せない項目は「思い出せない」を押す。"
+          : "紙の D1〜 の答えを入れて採点する。× は紙で直して、全部 ○ まで送り直す。思い出せない項目は推測で埋めず「思い出せない」を押す（採点すると答えが出る・翌日また出る）。");
   const box = $("drillRounds");
   box.replaceChildren();
   dst.rounds.forEach((r, idx) => {
@@ -300,6 +306,7 @@ function renderDrill(){
     r.qs.forEach((q, i) => {
       const spec = d.qs[q], row = el("div", { class: "drow" + (!q0 && r.ok[i] === false ? " x" : "") });
       const field = el("div", { class: "opts" });
+      const gave = r.sel[i] === GIVEUP;
       if (spec.t === "choice") {
         for (let j = 1; j <= (spec.n || 4); j++) {
           const b = el("button", { class: "opt", type: "button", "aria-pressed": String(r.sel[i] === j), "aria-label": `D${q + 1} の ${j} 番` }, CIRC[j - 1] || String(j));
@@ -311,11 +318,18 @@ function renderDrill(){
         const fmt = SHORT_FMT[shortKind(spec)];
         const inp = el("input", { class: "txt", type: "text", autocomplete: "off", autocapitalize: "off", placeholder: fmt.ph, "aria-label": `D${q + 1} の答え（${fmt.label}）` });
         field.append(el("p", { class: "fmt" }, fmt.label));
-        inp.value = r.sel[i] || "";
-        if (active) inp.addEventListener("input", e => { r.sel[i] = e.currentTarget.value; pinned = logicalToday(); draftDrill(); });
+        inp.value = gave ? "" : (r.sel[i] || "");
+        if (active) inp.addEventListener("input", e => { r.sel[i] = e.currentTarget.value; pinned = logicalToday(); draftDrill(); renderGiveup(); });
         else inp.disabled = true;
         field.append(inp);
       }
+      const gb = el("button", { class: "chip", type: "button", "aria-pressed": String(gave), "aria-label": `D${q + 1} を思い出せない` }, "思い出せない");
+      const renderGiveup = () => gb.setAttribute("aria-pressed", String(r.sel[i] === GIVEUP));
+      if (!active) gb.disabled = true;
+      else gb.onclick = () => { r.sel[i] = r.sel[i] === GIVEUP ? null : GIVEUP; pinned = logicalToday(); draftDrill(); renderDrill(); };
+      field.append(gb);
+      if (gave && !q0 && !active && spec.a !== undefined)       // 採点した後：答えを出す（紙に写して閉じる）
+        field.append(el("p", { class: "fmt reveal" }, `答え：${answerText(spec)}（紙に写す）`));
       const mark = q0 || r.ok[i] === null || r.ok[i] === undefined ? "" : (r.ok[i] ? "○" : "×");
       row.append(el("span", { class: "qn" }, `D${q + 1}`), field, el("span", { class: "mark" }, mark));
       wrap.append(row);
